@@ -66,6 +66,10 @@ public abstract class Conta {
         }
     }
 
+    protected void adicionarTransacao(Transacao transacao) {
+        this.transacoes.add(transacao);
+    }
+
     public String getNumero() {
         return numero;
     }
