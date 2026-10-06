@@ -72,7 +72,7 @@ src/
 1. Clone o repositório:
 
 ```bash
-git clone [https://github.com/SEU_USUARIO/cdi-gerenciamento-bancario.git](https://github.com/SEU_USUARIO/cdi-gerenciamento-bancario.git)
+https://github.com/luantrainotti/cdi-gerenciamento-bancario.git
 ```
 
 2. Aceda à pasta do projeto:
