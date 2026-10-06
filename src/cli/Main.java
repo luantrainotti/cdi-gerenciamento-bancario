@@ -181,9 +181,9 @@ public class Main {
             throw new ValorInvalidoException("A conta informada não é uma Conta Poupança.");
         }
 
-        BigDecimal taxa = lerValorBigDecimal("Taxa percentual a aplicar (ex: 0.5 para 0,5%): ");
-        cp.aplicarRendimento(taxa);
-        System.out.printf("Rendimento aplicado com sucesso! Novo saldo: R$ %.2f%n", cp.getSaldo());
+        cp.aplicarRendimento();
+        System.out.printf("Rendimento de %.2f%% aplicado com sucesso! Novo saldo: R$ %.2f%n",
+                ContaPoupanca.getTaxaRendimento(), cp.getSaldo());
     }
 
     private static int lerOpcaoInteira(String mensagem) {

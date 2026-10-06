@@ -8,6 +8,8 @@ import java.math.RoundingMode;
 
 public class ContaPoupanca extends Conta {
 
+    private static final BigDecimal TAXA_RENDIMENTO = new BigDecimal("0.50");
+
     public ContaPoupanca(String numero, Cliente titular) {
         super(numero, titular);
     }
@@ -23,16 +25,12 @@ public class ContaPoupanca extends Conta {
         }
 
         this.saldo.subtract(valor);
-        adicionarTransacao(new Transacao(TipoTransacao.SAQUE, valor, "Saque em conta popança"));
+        adicionarTransacao(new Transacao(TipoTransacao.SAQUE, valor, "Saque em conta poupança"));
     }
 
-    public void aplicarRendimento(BigDecimal taxaPercentual) {
-        if (taxaPercentual == null || taxaPercentual.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ValorInvalidoException("A taxa de rendimento deve ser maior que zero");
-        }
-
+    public void aplicarRendimento() {
         BigDecimal rendimento = this.saldo
-                .multiply(taxaPercentual)
+                .multiply(TAXA_RENDIMENTO)
                 .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
         if (rendimento.compareTo(BigDecimal.ZERO) > 0) {
@@ -40,8 +38,12 @@ public class ContaPoupanca extends Conta {
             adicionarTransacao(new Transacao(
                     TipoTransacao.DEPOSITO,
                     rendimento,
-                    String.format("Rendimento aplicado (%.2f%%)", taxaPercentual)
+                    String.format("Rendimento mensal aplicado (%.2f%%)", TAXA_RENDIMENTO)
             ));
         }
+    }
+
+    public static BigDecimal getTaxaRendimento() {
+        return TAXA_RENDIMENTO;
     }
 }
