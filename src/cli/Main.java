@@ -1,5 +1,6 @@
 package cli;
 
+import dominio.Cliente;
 import dominio.Conta;
 import dominio.ContaCorrente;
 import dominio.ContaPoupanca;
@@ -9,8 +10,9 @@ import excecao.ContaNaoEncontradaException;
 import excecao.SaldoInsuficienteException;
 import excecao.ValorInvalidoException;
 import service.BancoService;
+import util.DataHoraUtil;
+import util.DinheiroUtil;
 
-import java.math.BigDecimal;
 import java.util.Scanner;
 
 public class Main {
@@ -19,49 +21,48 @@ public class Main {
     private static final BancoService bancoService = new BancoService();
 
     public static void main(String[] args) {
-        int opcao = -1;
+        boolean rodando = true;
 
-        System.out.println("=========================================");
-        System.out.println("      SISTEMA BANCARIO DIGITAL CLI       ");
-        System.out.println("=========================================");
-
-        do {
+        while (rodando) {
             exibirMenu();
-            opcao = lerOpcaoInteira("Escolha uma opção: ");
+            int opcao = lerOpcaoInteira("Escolha uma opção: ");
 
             try {
                 switch (opcao) {
-                    case 1 -> criarContaCorrente();
-                    case 2 -> criarContaPoupanca();
+                    case 1 -> abrirContaCorrente();
+                    case 2 -> abrirContaPoupanca();
                     case 3 -> realizarDeposito();
                     case 4 -> realizarSaque();
                     case 5 -> realizarTransferencia();
                     case 6 -> consultarSaldo();
                     case 7 -> consultarExtrato();
-                    case 8 -> aplicarRendimentoPoupanca();
-                    case 0 -> System.out.println("\nEncerrando o sistema... Obrigado por utilizar!");
-                    default -> System.err.println("Opção inválida! Selecione uma opção válida do menu.");
+                    case 8 -> aplicarRendimento();
+                    case 0 -> {
+                        System.out.println("\nEncerrando o sistema. Até logo!");
+                        rodando = false;
+                    }
+                    default -> System.out.println("Opção inválida! Escolha um valor do menu.");
                 }
-            } catch (SaldoInsuficienteException | ValorInvalidoException | ContaNaoEncontradaException | ContaJaCadastradaException e) {
-                System.err.println("\n[ERRO DE NEGÓCIO] " + e.getMessage());
-            } catch (IllegalArgumentException e) {
-                System.err.println("\n[DADO INVÁLIDO] " + e.getMessage());
+            } catch (SaldoInsuficienteException | ValorInvalidoException |
+                     ContaJaCadastradaException | ContaNaoEncontradaException |
+                     IllegalStateException e) {
+                System.out.println("\n[ERRO DE NEGÓCIO]: " + e.getMessage());
             } catch (Exception e) {
-                System.err.println("\n[ERRO INESPERADO] Ocorreu uma falha: " + e.getMessage());
+                System.out.println("\n[ERRO INESPERADO]: Ocorreu uma falha no processamento.");
+                e.printStackTrace();
             }
 
-            if (opcao != 0) {
-                System.out.println("\nPressione ENTER para continuar...");
+            if (rodando) {
+                System.out.println("\nPressione ENTER para voltar ao menu...");
                 scanner.nextLine();
             }
-
-        } while (opcao != 0);
-
-        scanner.close();
+        }
     }
 
     private static void exibirMenu() {
-        System.out.println("\n---------------- MENU -------------------");
+        System.out.println("\n=========================================");
+        System.out.println("       SISTEMA BANCARIO DIGITAL CLI      ");
+        System.out.println("=========================================");
         System.out.println("1 - Abrir Conta Corrente");
         System.out.println("2 - Abrir Conta Poupança");
         System.out.println("3 - Realizar Depósito");
@@ -74,116 +75,107 @@ public class Main {
         System.out.println("-----------------------------------------");
     }
 
-    private static void criarContaCorrente() {
-        System.out.println("\n--- Abertura de Conta Corrente ---");
-        System.out.print("Nome do titular: ");
-        String nome = scanner.nextLine();
-        System.out.print("CPF: ");
-        String cpf = scanner.nextLine();
-        System.out.print("E-mail: ");
-        String email = scanner.nextLine();
-        BigDecimal limite = lerValorBigDecimal("Limite do cheque especial (R$): ");
+    private static void abrirContaCorrente() {
+        Cliente cliente = coletarDadosCliente();
+        int numero = bancoService.gerarNovoNumeroConta();
+        long limiteCentavos = 50000L; // R$ 500,00 de limite padrão
 
-        ContaCorrente cc = bancoService.abrirContaCorrente(nome, cpf, email, limite);
-        System.out.printf("Conta Corrente nº %s aberta com sucesso para %s!%n", cc.getNumero(), cc.getTitular().getNome());
+        ContaCorrente cc = new ContaCorrente(numero, cliente, limiteCentavos);
+        bancoService.cadastrarConta(cc);
+        System.out.printf("Conta Corrente nº %d criada com sucesso! Limite cheque especial: %s%n",
+                numero, DinheiroUtil.formatar(limiteCentavos));
     }
 
-    private static void criarContaPoupanca() {
-        System.out.println("\n--- Abertura de Conta Poupança ---");
-        System.out.print("Nome do titular: ");
-        String nome = scanner.nextLine();
-        System.out.print("CPF: ");
-        String cpf = scanner.nextLine();
-        System.out.print("E-mail: ");
-        String email = scanner.nextLine();
+    private static void abrirContaPoupanca() {
+        Cliente cliente = coletarDadosCliente();
+        int numero = bancoService.gerarNovoNumeroConta();
 
-        ContaPoupanca cp = bancoService.abrirContaPoupanca(nome, cpf, email);
-        System.out.printf("Conta Poupança nº %s aberta com sucesso para %s!%n", cp.getNumero(), cp.getTitular().getNome());
+        ContaPoupanca cp = new ContaPoupanca(numero, cliente);
+        bancoService.cadastrarConta(cp);
+        System.out.printf("Conta Poupança nº %d criada com sucesso!%n", numero);
+    }
+
+    private static Cliente coletarDadosCliente() {
+        System.out.print("Nome do titular: ");
+        String nome = scanner.nextLine().strip();
+        System.out.print("CPF (apenas 11 dígitos): ");
+        String cpf = scanner.nextLine().strip();
+        return new Cliente(nome, cpf);
     }
 
     private static void realizarDeposito() {
-        System.out.println("\n--- Depósito ---");
-        System.out.print("Número da conta: ");
-        String numero = scanner.nextLine();
-        BigDecimal valor = lerValorBigDecimal("Valor do depósito (R$): ");
+        int numero = lerOpcaoInteira("Número da conta: ");
+        Conta conta = bancoService.buscarPorNumero(numero);
 
-        Conta conta = bancoService.buscarConta(numero);
-        conta.depositar(valor);
-        System.out.printf("Depósito realizado com sucesso! Novo saldo: R$ %.2f%n", conta.getSaldo());
+        System.out.print("Valor do depósito (ex: 50.00): R$ ");
+        long centavos = DinheiroUtil.converterParaCentavos(scanner.nextLine());
+        conta.depositar(centavos);
+        System.out.println("Depósito realizado com sucesso!");
     }
 
     private static void realizarSaque() {
-        System.out.println("\n--- Saque ---");
-        System.out.print("Número da conta: ");
-        String numero = scanner.nextLine();
-        BigDecimal valor = lerValorBigDecimal("Valor do saque (R$): ");
+        int numero = lerOpcaoInteira("Número da conta: ");
+        Conta conta = bancoService.buscarPorNumero(numero);
 
-        Conta conta = bancoService.buscarConta(numero);
-        conta.sacar(valor);
-        System.out.printf("Saque realizado com sucesso! Saldo atual: R$ %.2f%n", conta.getSaldo());
+        System.out.print("Valor do saque (ex: 30.00): R$ ");
+        long centavos = DinheiroUtil.converterParaCentavos(scanner.nextLine());
+        conta.sacar(centavos);
+        System.out.println("Saque efetuado com sucesso!");
     }
 
     private static void realizarTransferencia() {
-        System.out.println("\n--- Transferência Bancária ---");
-        System.out.print("Número da conta de ORIGEM: ");
-        String origem = scanner.nextLine();
-        System.out.print("Número da conta de DESTINO: ");
-        String destino = scanner.nextLine();
-        BigDecimal valor = lerValorBigDecimal("Valor da transferência (R$): ");
+        int origem = lerOpcaoInteira("Número da sua conta: ");
+        int destino = lerOpcaoInteira("Número da conta de destino: ");
 
-        bancoService.transferir(origem, destino, valor);
-        System.out.println("Transferência concluída com sucesso!");
+        System.out.print("Valor da transferência (ex: 100.00): R$ ");
+        long centavos = DinheiroUtil.converterParaCentavos(scanner.nextLine());
+
+        bancoService.transferir(origem, destino, centavos);
+        System.out.println("Transferência realizada com sucesso!");
     }
 
     private static void consultarSaldo() {
-        System.out.println("\n--- Consulta de Saldo ---");
-        System.out.print("Número da conta: ");
-        String numero = scanner.nextLine();
-
-        Conta conta = bancoService.buscarConta(numero);
-        System.out.printf("Titular: %s%n", conta.getTitular().getNome());
-        System.out.printf("Saldo disponível: R$ %.2f%n", conta.getSaldo());
-        if (conta instanceof ContaCorrente cc) {
-            System.out.printf("Limite cheque especial: R$ %.2f%n", cc.getLimiteChequeEspecial());
-            System.out.printf("Saldo total com limite: R$ %.2f%n", cc.getSaldo().add(cc.getLimiteChequeEspecial()));
-        }
+        int numero = lerOpcaoInteira("Número da conta: ");
+        Conta conta = bancoService.buscarPorNumero(numero);
+        System.out.printf("Titular: %s | Saldo Atual: %s%n",
+                conta.getTitular().nome(),
+                DinheiroUtil.formatar(conta.getSaldoCentavos()));
     }
 
     private static void consultarExtrato() {
-        System.out.println("\n--- Extrato da Conta ---");
-        System.out.print("Número da conta: ");
-        String numero = scanner.nextLine();
+        int numero = lerOpcaoInteira("Número da conta: ");
+        Conta conta = bancoService.buscarPorNumero(numero);
 
-        Conta conta = bancoService.buscarConta(numero);
-        System.out.println("---------------------------------------------------------------------------------");
-        System.out.printf("Extrato - Conta: %s | Titular: %s (CPF: %s)%n",
-                conta.getNumero(), conta.getTitular().getNome(), conta.getTitular().getCpf());
-        System.out.println("---------------------------------------------------------------------------------");
+        System.out.println("\n========== EXTRATO BANCÁRIO ==========");
+        System.out.println("Titular: " + conta.getTitular().nome());
+        System.out.println("CPF: " + mascararCpf(conta.getTitular().cpf()));
+        System.out.println("Saldo: " + DinheiroUtil.formatar(conta.getSaldoCentavos()));
+        System.out.println("--------------------------------------");
 
         if (conta.getTransacoes().isEmpty()) {
-            System.out.println("Nenhuma movimentação registrada até o momento.");
+            System.out.println("Nenhuma movimentação registrada.");
         } else {
             for (Transacao t : conta.getTransacoes()) {
-                System.out.println(t);
+                System.out.printf("[%s] %-22s : %s%n",
+                        DataHoraUtil.formatar(t.dataHora()),
+                        t.tipo(),
+                        DinheiroUtil.formatar(t.valorCentavos()));
             }
         }
-        System.out.println("---------------------------------------------------------------------------------");
-        System.out.printf("Saldo final atual: R$ %.2f%n", conta.getSaldo());
+        System.out.println("======================================");
     }
 
-    private static void aplicarRendimentoPoupanca() {
-        System.out.println("\n--- Rendimento de Poupança ---");
-        System.out.print("Número da conta poupança: ");
-        String numero = scanner.nextLine();
+    private static void aplicarRendimento() {
+        int numero = lerOpcaoInteira("Número da Conta Poupança: ");
+        Conta conta = bancoService.buscarPorNumero(numero);
 
-        Conta conta = bancoService.buscarConta(numero);
-        if (!(conta instanceof ContaPoupanca cp)) {
-            throw new ValorInvalidoException("A conta informada não é uma Conta Poupança.");
+        if (conta instanceof ContaPoupanca cp) {
+            cp.aplicarRendimentoMensal();
+            System.out.println("Rendimento de 0.5% aplicado com sucesso!");
+            System.out.println("Novo saldo: " + DinheiroUtil.formatar(cp.getSaldoCentavos()));
+        } else {
+            System.out.println("A conta informada não é uma Conta Poupança.");
         }
-
-        cp.aplicarRendimento();
-        System.out.printf("Rendimento de %.2f%% aplicado com sucesso! Novo saldo: R$ %.2f%n",
-                ContaPoupanca.getTaxaRendimento(), cp.getSaldo());
     }
 
     private static int lerOpcaoInteira(String mensagem) {
@@ -193,20 +185,15 @@ public class Main {
             try {
                 return Integer.parseInt(input);
             } catch (NumberFormatException e) {
-                System.err.println("Entrada inválida! Digite apenas números inteiros.");
+                System.out.println("Entrada inválida! Digite apenas números inteiros.");
             }
         }
     }
 
-    private static BigDecimal lerValorBigDecimal(String mensagem) {
-        while (true) {
-            System.out.print(mensagem);
-            String input = scanner.nextLine().strip().replace(",", ".");
-            try {
-                return new BigDecimal(input);
-            } catch (NumberFormatException e) {
-                System.err.println("Valor numérico inválido! Use formato como '150.00' ou '150,00'.");
-            }
+    private static String mascararCpf(String cpf) {
+        if (cpf == null || cpf.length() != 11) {
+            return "***.***.***-**";
         }
+        return cpf.substring(0, 3) + ".***.***-" + cpf.substring(9);
     }
 }
