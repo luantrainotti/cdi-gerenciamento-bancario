@@ -2,49 +2,31 @@ package dominio;
 
 import excecao.SaldoInsuficienteException;
 
-import java.math.BigDecimal;
+public class ContaCorrente extends Conta {
 
-public class ContaCorrente extends Conta{
+    private final long limiteChequeEspecialCentavos;
+    private static final long TAXA_OPERACAO_CENTAVOS = 100L; // R$ 1,00 de taxa por saque
 
-    public static final BigDecimal TAXA_SAQUE = new BigDecimal("2.50");
-    public final BigDecimal limiteChequeEspecial;
+    public ContaCorrente(int numero, Cliente titular, long limiteChequeEspecialCentavos) {
+        super(numero, titular, 0L);
+        this.limiteChequeEspecialCentavos = limiteChequeEspecialCentavos;
+    }
 
-    public ContaCorrente(String numero, Cliente titular, BigDecimal limiteChequeEspecial) {
-        super(numero, titular);
-
-        if (limiteChequeEspecial == null || limiteChequeEspecial.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("O limite de cheque especial não pode ser nulo ou negativo");
-        }
-        this.limiteChequeEspecial = limiteChequeEspecial;
+    public long getLimiteChequeEspecialCentavos() {
+        return limiteChequeEspecialCentavos;
     }
 
     @Override
-    public void sacar(BigDecimal valor) {
-        validarValorPositivo(valor, "saque");
+    public synchronized void sacar(long centavos) {
+        long custoTotal = centavos + TAXA_OPERACAO_CENTAVOS;
+        validarSaque(custoTotal);
+        super.sacar(centavos);
+    }
 
-        BigDecimal valorTotalDebito = valor.add(TAXA_SAQUE);
-        BigDecimal saldoTotalDisponivel = this.saldo.add(this.limiteChequeEspecial);
-
-        if (valorTotalDebito.compareTo(saldoTotalDisponivel) > 0) {
-            throw new SaldoInsuficienteException(String.format(
-                    "Saldo insuficiente para saque com taxa (R$ %.2f). Disponível com limite: R$ %.2f",
-                    TAXA_SAQUE,
-                    saldoTotalDisponivel
-            ));
+    @Override
+    protected void validarSaque(long centavosNecessarios) {
+        if (getSaldoCentavos() + limiteChequeEspecialCentavos < centavosNecessarios) {
+            throw new SaldoInsuficienteException("Saldo e limite de cheque especial insuficientes para a operação.");
         }
-
-        this.saldo = this.saldo.subtract(valorTotalDebito);
-
-        String descricao = String.format("Saque de R$ %.2f (Taxa: R$ %.2f)", valor, TAXA_SAQUE);
-        this.getTransacoes();
-        adicionarTransacao(new Transacao(TipoTransacao.SAQUE, valorTotalDebito, descricao));
-    }
-
-    public BigDecimal getLimiteChequeEspecial() {
-        return limiteChequeEspecial;
-    }
-
-    public static BigDecimal getTaxaSaque() {
-        return TAXA_SAQUE;
     }
 }

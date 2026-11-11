@@ -3,47 +3,38 @@ package dominio;
 import excecao.SaldoInsuficienteException;
 import excecao.ValorInvalidoException;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.time.YearMonth;
 
 public class ContaPoupanca extends Conta {
 
-    private static final BigDecimal TAXA_RENDIMENTO = new BigDecimal("0.50");
+    private static final double TAXA_RENDIMENTO = 0.005; // 0,5% a.m.
+    private YearMonth ultimoMesRendimento;
 
-    public ContaPoupanca(String numero, Cliente titular) {
-        super(numero, titular);
+    public ContaPoupanca(int numero, Cliente titular) {
+        super(numero, titular, 0L);
     }
 
     @Override
-    public void sacar(BigDecimal valor) {
-        validarValorPositivo(valor, "saque");
-
-        if (valor.compareTo(this.saldo) > 0) {
-            throw new SaldoInsuficienteException(String.format("Saldo insuficiente para saque na poupança. Saldo atual: R$ %.2f",
-                    this.saldo
-            ));
+    protected void validarSaque(long centavos) {
+        if (centavos <= 0) {
+            throw new ValorInvalidoException("O valor do saque deve ser maior que zero.");
         }
-
-        this.saldo.subtract(valor);
-        adicionarTransacao(new Transacao(TipoTransacao.SAQUE, valor, "Saque em conta poupança"));
-    }
-
-    public void aplicarRendimento() {
-        BigDecimal rendimento = this.saldo
-                .multiply(TAXA_RENDIMENTO)
-                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
-
-        if (rendimento.compareTo(BigDecimal.ZERO) > 0) {
-            this.saldo = this.saldo.add(rendimento);
-            adicionarTransacao(new Transacao(
-                    TipoTransacao.DEPOSITO,
-                    rendimento,
-                    String.format("Rendimento mensal aplicado (%.2f%%)", TAXA_RENDIMENTO)
-            ));
+        if (getSaldoCentavos() < centavos) {
+            throw new SaldoInsuficienteException("Saldo insuficiente na conta poupança.");
         }
     }
 
-    public static BigDecimal getTaxaRendimento() {
-        return TAXA_RENDIMENTO;
+    public synchronized void aplicarRendimentoMensal() {
+        YearMonth mesAtual = YearMonth.now();
+        if (mesAtual.equals(ultimoMesRendimento)) {
+            throw new IllegalStateException("O rendimento deste mês já foi aplicado nesta conta.");
+        }
+
+        long saldoAtual = getSaldoCentavos();
+        if (saldoAtual > 0) {
+            long rendimento = Math.round(saldoAtual * TAXA_RENDIMENTO);
+            depositar(rendimento);
+        }
+        this.ultimoMesRendimento = mesAtual;
     }
 }
