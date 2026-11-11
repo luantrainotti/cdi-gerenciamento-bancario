@@ -1,50 +1,20 @@
 package dominio;
 
-public class Cliente {
-    private final String nome;
-    private final String cpf;
-    private String email;
+import excecao.ValorInvalidoException;
 
-    public Cliente(String nome, String cpf, String email) {
+public record Cliente(String nome, String cpf) {
+
+    public Cliente {
         if (nome == null || nome.isBlank()) {
-            throw new IllegalArgumentException("O nome do cliente não pode ser nulo ou vazio.");
+            throw new ValorInvalidoException("O nome do cliente não pode ser vazio.");
         }
-
         if (cpf == null || cpf.isBlank()) {
-            throw new IllegalArgumentException("O CPF não pode ser nulo ou vazio.");
+            throw new ValorInvalidoException("O CPF não pode ser vazio.");
         }
-
-        if (email == null || email.isBlank()) {
-            throw new IllegalArgumentException("O email não pode ser nulo ou vazio.");
+        // Remove pontuações e mantém apenas os dígitos
+        cpf = cpf.replaceAll("\\D", "");
+        if (cpf.length() != 11) {
+            throw new ValorInvalidoException("O CPF deve conter exatamente 11 dígitos numéricos.");
         }
-
-        this.nome = nome.strip();
-        this.cpf = cpf.strip();
-        this.email = email.strip();
-    }
-
-    public String getNome() {
-        return nome;
-    }
-
-    public String getCpf() {
-        return cpf;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        if (email == null || email.isBlank()) {
-            throw new IllegalArgumentException("O email não pode ser vazio");
-        }
-
-        this.email = email.strip();
-    }
-
-    @Override
-    public String toString() {
-        return String.format("Cliente: %s | CPF: %s | E-mail: %s", nome, cpf, email);
     }
 }
