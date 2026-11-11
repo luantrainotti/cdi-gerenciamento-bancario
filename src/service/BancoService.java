@@ -1,103 +1,77 @@
 package service;
 
-import dominio.Cliente;
 import dominio.Conta;
-import dominio.ContaCorrente;
-import dominio.ContaPoupanca;
 import excecao.ContaJaCadastradaException;
 import excecao.ContaNaoEncontradaException;
 import excecao.ValorInvalidoException;
 
-import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class BancoService {
 
-    private final Map<String, Conta> contasPorNumero;
-    private final Map<String, Cliente> clientesPorCpf;
-    private int sequencialConta;
+    private final Map<Integer, Conta> contasPorNumero = new ConcurrentHashMap<>();
+    private final Map<String, Integer> contasPorCpf = new ConcurrentHashMap<>();
+    private final AtomicInteger sequencialConta = new AtomicInteger(1001);
 
-    public BancoService() {
-        this.contasPorNumero = new HashMap<>();
-        this.clientesPorCpf = new HashMap<>();
-        this.sequencialConta = 1000;
+    public int gerarNovoNumeroConta() {
+        return sequencialConta.getAndIncrement();
     }
 
-    public Conta buscarConta(String numeroConta) {
-        if (numeroConta == null || numeroConta.isBlank()) {
-            throw new IllegalArgumentException("O número da conta informada é inválido");
-        }
-
-        Conta conta = contasPorNumero.get(numeroConta.strip());
+    public synchronized void cadastrarConta(Conta conta) {
         if (conta == null) {
-            throw new ContaNaoEncontradaException("Conta não encontrada para o número: " + numeroConta);
+            throw new ValorInvalidoException("Conta não pode ser nula.");
+        }
+        String cpf = conta.getTitular().cpf();
+        if (contasPorCpf.containsKey(cpf)) {
+            throw new ContaJaCadastradaException("Já existe uma conta ativa para o CPF informado.");
         }
 
+        contasPorNumero.put(conta.getNumero(), conta);
+        contasPorCpf.put(cpf, conta.getNumero());
+    }
+
+    public Conta buscarPorNumero(int numero) {
+        Conta conta = contasPorNumero.get(numero);
+        if (conta == null) {
+            throw new ContaNaoEncontradaException("Conta de número " + numero + " não foi encontrada.");
+        }
         return conta;
     }
 
-    public ContaCorrente abrirContaCorrente(String nome, String cpf, String email, BigDecimal limiteChequeEspecial) {
-        Cliente titular = obterOuCriarCliente(nome, cpf, email);
-        validarUnicidadeConta(titular.getCpf(), ContaCorrente.class);
-
-        String numeroGerado = gerarProximoNumeroConta();
-        ContaCorrente novaConta = new ContaCorrente(numeroGerado, titular, limiteChequeEspecial);
-
-        contasPorNumero.put(numeroGerado, novaConta);
-        return novaConta;
+    public Conta buscarPorCpf(String cpf) {
+        if (cpf == null) {
+            throw new ValorInvalidoException("CPF não pode ser nulo.");
+        }
+        String cpfNormalizado = cpf.replaceAll("\\D", "");
+        Integer numero = contasPorCpf.get(cpfNormalizado);
+        if (numero == null) {
+            throw new ContaNaoEncontradaException("Nenhuma conta vinculada ao CPF " + cpfNormalizado);
+        }
+        return buscarPorNumero(numero);
     }
 
-    public ContaPoupanca abrirContaPoupanca(String nome, String cpf, String email) {
-        Cliente titular = obterOuCriarCliente(nome, cpf, email);
-        validarUnicidadeConta(titular.getCpf(), ContaPoupanca.class);
-
-        String numeroGerado = gerarProximoNumeroConta();
-        ContaPoupanca novaConta = new ContaPoupanca(numeroGerado, titular);
-
-        contasPorNumero.put(numeroGerado, novaConta);
-        return novaConta;
-    }
-
-    public void transferir(String numeroOrigem, String numeroDestino, BigDecimal valor) {
-        if (numeroOrigem.strip().equals(numeroDestino.strip())) {
-            throw new ValorInvalidoException("A conta de origem e destino não podem ser iguais.");
+    public void transferir(int numeroOrigem, int numeroDestino, long centavos) {
+        if (numeroOrigem == numeroDestino) {
+            throw new ValorInvalidoException("A conta de destino não pode ser igual à de origem.");
+        }
+        if (centavos <= 0) {
+            throw new ValorInvalidoException("O valor da transferência deve ser maior que zero.");
         }
 
-        Conta contaOrigem = buscarConta(numeroOrigem);
-        Conta contaDestino = buscarConta(numeroDestino);
+        Conta origem = buscarPorNumero(numeroOrigem);
+        Conta destino = buscarPorNumero(numeroDestino);
 
-        contaOrigem.debitarTransferencia(valor, "Transferência enviada para conta " + contaDestino.getNumero());
-        contaDestino.creditarTransferencia(valor, "Transferência recebida da conta " + contaOrigem.getNumero());
-    }
+        // Bloqueio ordenado determinístico por ID para prevenir deadlocks
+        Conta primeiroLock = origem.getNumero() < destino.getNumero() ? origem : destino;
+        Conta segundoLock = origem.getNumero() < destino.getNumero() ? destino : origem;
 
-    private Cliente obterOuCriarCliente(String nome, String cpf, String email) {
-        String cpfSanitizado = (cpf != null) ? cpf.strip() : "";
-
-        if (clientesPorCpf.containsKey(cpfSanitizado)) {
-            return clientesPorCpf.get(cpfSanitizado);
-        }
-
-        Cliente novoCliente = new Cliente(nome, cpfSanitizado, email);
-        clientesPorCpf.put(cpfSanitizado, novoCliente);
-        return novoCliente;
-    }
-
-    private void validarUnicidadeConta(String cpf, Class<?> tipoContaEsperada) {
-        for (Conta conta : contasPorNumero.values()) {
-            boolean mesmoCpf = conta.getTitular().getCpf().equalsIgnoreCase(cpf.strip());
-            boolean mesmoTipo = tipoContaEsperada.isInstance(conta);
-
-            if (mesmoCpf && mesmoTipo) {
-                throw new ContaJaCadastradaException(
-                        "O titular com CPF " + cpf + " já possui uma " + tipoContaEsperada.getSimpleName() + "."
-                );
+        synchronized (primeiroLock) {
+            synchronized (segundoLock) {
+                origem.debitarTransferencia(centavos);
+                destino.creditarTransferencia(centavos);
             }
         }
-    }
-
-    private synchronized String gerarProximoNumeroConta() {
-        this.sequencialConta++;
-        return String.valueOf(this.sequencialConta);
     }
 }
